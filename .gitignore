@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+.env
+report.html
+data/
+results.csv
