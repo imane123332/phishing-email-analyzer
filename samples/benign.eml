@@ -1,0 +1,10 @@
+Received: from mail.example.org ([203.0.113.9]) by mx.victim.ma with ESMTP; Mon, 26 Oct 2026 09:00:00 +0000
+Authentication-Results: mx.victim.ma; spf=pass; dkim=pass; dmarc=pass
+Return-Path: <prof@example.org>
+From: "Prof Alami" <prof@example.org>
+To: imane@victim.ma
+Subject: Rapport TP
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Bonjour, voici les consignes: https://example.org/tp
