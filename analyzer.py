@@ -24,7 +24,12 @@ BRANDS = ["paypal", "microsoft", "apple", "amazon", "google", "netflix", "dhl",
           "attijariwafa", "cih", "bmce", "maroc telecom", "inwi", "orange", "cnss", "dgi"]
 URGENCY = ["urgent", "immediately", "verify your account", "suspended", "act now",
            "password expires", "urgence", "immédiatement", "vérifiez votre compte",
-           "compte suspendu", "mot de passe expire", "dernier avertissement"]
+           "compte suspendu", "mot de passe expire", "dernier avertissement",
+           "conta bloqueada", "regularize", "tributos", "cuenta suspendida",
+           "verifique su cuenta", "تم تعليق حسابك", "تحقق من حسابك"]
+SPAM_WORDS = ["free spins", "casino", "jackpot", "lottery", "bitcoin giveaway",
+              "viagra", "you have won", "vous avez gagné", "claim your prize"]
+HIDDEN_RE = re.compile(r"display\s*:\s*none|font-size\s*:\s*0(px)?\s*[;\"]", re.I)
 URL_RE = re.compile(r"https?://[^\s<>\"')]+", re.I)
 IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 RECV_IP_RE = re.compile(r"\[?(\d{1,3}(?:\.\d{1,3}){3})\]?")
@@ -62,6 +67,24 @@ class LinkExtractor(HTMLParser):
             self._href = None
 
 
+def hdr(msg, name: str) -> str:
+    """Safe header read: malformed real-world headers can crash the email parser."""
+    try:
+        return str(msg.get(name, ""))
+    except Exception:
+        for k, v in msg.raw_items():
+            if k.lower() == name.lower():
+                return str(v)
+        return ""
+
+
+def hdr_all(msg, name: str):
+    try:
+        return [str(v) for v in msg.get_all(name, [])]
+    except Exception:
+        return [str(v) for k, v in msg.raw_items() if k.lower() == name.lower()]
+
+
 def domain_of(addr: str) -> str:
     return addr.rsplit("@", 1)[-1].lower().strip(">") if "@" in addr else ""
 
@@ -78,28 +101,40 @@ def parse_eml(path: str):
         return BytesParser(policy=policy.default).parse(f)
 
 
+def _part_text(part) -> str:
+    """Decode a body part; real emails often have broken charsets."""
+    try:
+        return part.get_content()
+    except (LookupError, UnicodeDecodeError, AttributeError, KeyError):
+        raw = part.get_payload(decode=True) or b""
+        return raw.decode("utf-8", errors="replace")
+
+
 def get_bodies(msg):
     plain = html = ""
     p = msg.get_body(preferencelist=("plain",))
     h = msg.get_body(preferencelist=("html",))
     if p:
-        plain = p.get_content()
+        plain = _part_text(p)
     if h:
-        html = h.get_content()
+        html = _part_text(h)
     return plain, html
 
 
 def check_headers(msg):
     findings = []
-    disp, from_addr = parseaddr(str(msg.get("From", "")))
+    disp, from_addr = parseaddr(hdr(msg, "From"))
     from_dom = domain_of(from_addr)
 
-    _, reply_to = parseaddr(str(msg.get("Reply-To", "")))
+    if from_dom and "." not in from_dom:
+        findings.append(Finding("invalid_sender_domain", 20, f"Sender domain '{from_dom}' has no TLD"))
+
+    _, reply_to = parseaddr(hdr(msg, "Reply-To"))
     if reply_to and domain_of(reply_to) != from_dom:
         findings.append(Finding("reply_to_mismatch", 20,
                                 f"From={from_dom} but Reply-To={domain_of(reply_to)}"))
 
-    _, ret_path = parseaddr(str(msg.get("Return-Path", "")))
+    _, ret_path = parseaddr(hdr(msg, "Return-Path"))
     if ret_path and domain_of(ret_path) != from_dom:
         findings.append(Finding("return_path_mismatch", 10,
                                 f"From={from_dom} but Return-Path={domain_of(ret_path)}"))
@@ -114,13 +149,15 @@ def check_headers(msg):
             break
 
     auth = {}
-    for h in msg.get_all("Authentication-Results", []):
-        for mech, res in AUTH_RE.findall(str(h)):
+    for h in hdr_all(msg, "Authentication-Results"):
+        for mech, res in AUTH_RE.findall(h):
             auth[mech.lower()] = res.lower()
     for mech in ("spf", "dkim", "dmarc"):
         res = auth.get(mech)
         if res in ("fail", "softfail", "permerror", "temperror"):
             findings.append(Finding(f"{mech}_{res}", 15, f"{mech.upper()}={res}"))
+        elif res in ("none", "neutral"):
+            findings.append(Finding(f"{mech}_{res}", 8 if mech == "spf" else 4, f"{mech.upper()}={res}"))
         elif res is None:
             findings.append(Finding(f"{mech}_missing", 5, f"No {mech.upper()} result in headers"))
     return findings, {"from": from_addr, "display_name": disp, "reply_to": reply_to,
@@ -129,8 +166,8 @@ def check_headers(msg):
 
 def received_ips(msg):
     ips = []
-    for h in msg.get_all("Received", []):
-        ips.extend(RECV_IP_RE.findall(str(h)))
+    for h in hdr_all(msg, "Received"):
+        ips.extend(RECV_IP_RE.findall(h))
     return list(dict.fromkeys(ips))
 
 
@@ -179,10 +216,16 @@ def check_attachments(msg):
 
 def check_language(plain, html):
     text = (plain + " " + re.sub(r"<[^>]+>", " ", html)).lower()
+    out = []
     hits = [k for k in URGENCY if k in text]
     if hits:
-        return [Finding("urgency_language", min(5 * len(hits), 15), ", ".join(hits))]
-    return []
+        out.append(Finding("urgency_language", min(5 * len(hits), 15), ", ".join(hits)))
+    spam = [k for k in SPAM_WORDS if k in text]
+    if spam:
+        out.append(Finding("spam_keywords", 10, ", ".join(spam)))
+    if html and HIDDEN_RE.search(html):
+        out.append(Finding("hidden_text", 8, "HTML hides text (display:none / font-size:0)"))
+    return out
 
 
 def verdict(score: int) -> str:
@@ -203,7 +246,7 @@ def analyze(path: str) -> dict:
     score = min(sum(f.points for f in findings), 100)
     return {
         "file": path,
-        "subject": str(msg.get("Subject", "")),
+        "subject": hdr(msg, "Subject"),
         "meta": meta,
         "score": score,
         "verdict": verdict(score),
