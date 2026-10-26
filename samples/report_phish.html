@@ -1,0 +1,35 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Phishing report</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0d1117;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;padding:32px}
+.wrap{max-width:980px;margin:0 auto}h1{font-size:22px;margin:0 0 4px}.sub{color:#8b949e;margin-bottom:24px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;margin-bottom:18px}
+.top{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.gauge{width:130px;height:130px;border-radius:50%;display:grid;place-items:center;flex:none}
+.gauge div{width:100px;height:100px;border-radius:50%;background:#161b22;display:grid;place-items:center;text-align:center}
+.gauge b{font-size:30px;display:block;line-height:1}.gauge span{font-size:11px;color:#8b949e}
+.verdict{font-size:24px;font-weight:700}.kv{color:#8b949e}.kv code{color:#e6edf3}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8b949e;margin:0 0 12px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #21262d;vertical-align:top;word-break:break-word}
+th{color:#8b949e;font-weight:600;font-size:12px}code{font-family:SFMono-Regular,Consolas,monospace;font-size:13px;color:#79c0ff}
+.pill{display:inline-block;min-width:44px;text-align:center;padding:2px 8px;border-radius:999px;font-weight:700;font-size:12px}
+.hi{background:#da363433;color:#ff7b72}.md{background:#d2992233;color:#e3b341}.lo{background:#2f81f733;color:#79c0ff}
+.auth{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.chip{padding:3px 10px;border-radius:6px;font-size:13px;font-weight:600}
+.pass{background:#23863633;color:#3fb950}.bad{background:#da363433;color:#ff7b72}.none{background:#30363d;color:#8b949e}
+.foot{color:#6e7681;font-size:12px;text-align:center;margin-top:20px}
+</style></head><body><div class="wrap">
+<h1>Phishing Email Analysis</h1><div class="sub">samples/phish.eml</div>
+<div class="card top">
+<div class="gauge" style="background:conic-gradient(#ff7b72 360.0deg,#30363d 0)"><div><p style="margin:0"><b>100</b><span>/ 100</span></p></div></div>
+<div><div class="verdict" style="color:#ff7b72">MALICIOUS</div>
+<div class="kv">Subject: <code>Urgent: vérifiez votre compte</code></div>
+<div class="kv">From: <code>Attijariwafa Bank Support &lt;support@secure-login-update.xyz&gt;</code></div>
+<div class="kv">Reply-To: <code>collect@gmail.com</code> &nbsp; Return-Path: <code>bounce@evil-host.ru</code></div>
+<div class="auth"><span class="chip bad">SPF: fail</span><span class="chip bad">DKIM: none</span><span class="chip bad">DMARC: fail</span></div></div></div>
+<div class="card"><h2>Findings (12)</h2><table><tr><th>Points</th><th>Rule</th><th>Detail</th></tr><tr><td><span class="pill hi">+20</span></td><td><code>reply_to_mismatch</code></td><td>From=secure-login-update.xyz but Reply-To=gmail.com</td></tr><tr><td><span class="pill md">+10</span></td><td><code>return_path_mismatch</code></td><td>From=secure-login-update.xyz but Return-Path=evil-host.ru</td></tr><tr><td><span class="pill hi">+25</span></td><td><code>brand_spoofing</code></td><td>Display name mentions &#x27;attijariwafa&#x27;, sender domain is secure-login-update.xyz</td></tr><tr><td><span class="pill md">+15</span></td><td><code>spf_fail</code></td><td>SPF=fail</td></tr><tr><td><span class="pill md">+15</span></td><td><code>dmarc_fail</code></td><td>DMARC=fail</td></tr><tr><td><span class="pill hi">+25</span></td><td><code>link_text_mismatch</code></td><td>Text shows www.attijariwafa.ma, href goes to 185.220.101.5</td></tr><tr><td><span class="pill hi">+20</span></td><td><code>ip_url</code></td><td>http://185.220.101.5/login</td></tr><tr><td><span class="pill lo">+5</span></td><td><code>plain_http</code></td><td>http://185.220.101.5/login</td></tr><tr><td><span class="pill md">+10</span></td><td><code>url_shortener</code></td><td>http://bit.ly/3xYz</td></tr><tr><td><span class="pill lo">+5</span></td><td><code>plain_http</code></td><td>http://bit.ly/3xYz</td></tr><tr><td><span class="pill hi">+30</span></td><td><code>double_extension</code></td><td>facture.pdf.exe</td></tr><tr><td><span class="pill md">+10</span></td><td><code>urgency_language</code></td><td>immédiatement, compte suspendu</td></tr></table></div>
+<div class="card"><h2>Indicators of Compromise</h2>
+<table><tr><th>Domains</th></tr><tr><td><code>185.220.101.5</code></td></tr><tr><td><code>bit.ly</code></td></tr></table><br>
+<table><tr><th>Received IPs</th></tr><tr><td><code>185.220.101.5</code></td></tr></table><br>
+<table><tr><th>Attachment</th><th>Size</th><th>SHA-256</th></tr><tr><td>facture.pdf.exe</td><td>12 B</td><td><code>d930a77b4e5a6df96f8be687f754be90fa6da7939406d214814a80393847ce1b</code></td></tr></table></div>
+<div class="foot">phishing-email-analyzer &middot; static analysis only</div>
+</div></body></html>
