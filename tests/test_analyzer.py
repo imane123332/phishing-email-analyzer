@@ -58,6 +58,38 @@ class TestHtml(unittest.TestCase):
         self.assertNotIn("<script>alert", analyzer.render_html(r))
 
 
+class TestEvaluate(unittest.TestCase):
+    def test_counts(self):
+        import io
+        import contextlib
+        import tempfile
+        import shutil
+        import evaluate
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, "p"))
+            os.makedirs(os.path.join(d, "h"))
+            shutil.copy(os.path.join(S, "phish.eml"), os.path.join(d, "p"))
+            shutil.copy(os.path.join(S, "benign.eml"), os.path.join(d, "h"))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                evaluate.main(["--phish", os.path.join(d, "p"), "--ham", os.path.join(d, "h")])
+        self.assertIn("TP=1 FN=0 FP=0 TN=1", buf.getvalue())
+
+
+class TestNewRules(unittest.TestCase):
+    def test_content_rules(self):
+        html = '<div style="display:none">xxxx</div> Claim 400 free spins'
+        names = {f.rule for f in analyzer.check_language("", html)}
+        self.assertTrue({"spam_keywords", "hidden_text"} <= names)
+
+    def test_invalid_sender_domain(self):
+        import email
+        from email import policy
+        m = email.message_from_string("From: Correios <alerta@correios123>\n\nhi", policy=policy.default)
+        names = {f.rule for f in analyzer.check_headers(m)[0]}
+        self.assertIn("invalid_sender_domain", names)
+
+
 class TestHelpers(unittest.TestCase):
     def test_domain_of(self):
         self.assertEqual(analyzer.domain_of("a@B.com"), "b.com")
