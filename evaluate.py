@@ -2,7 +2,7 @@
 """Run the analyzer on folders of real emails and measure how well it works.
 
 Usage:
-  python evaluate.py --phish data/phish --ham data/ham [--threshold 30] [--csv results.csv]
+  python evaluate.py --phish data/phish --ham data/ham [--threshold 20] [--csv results.csv]
 """
 import argparse
 import csv
@@ -40,7 +40,7 @@ def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--phish", required=True, help="folder of real phishing .eml")
     ap.add_argument("--ham", required=True, help="folder of legitimate .eml")
-    ap.add_argument("--threshold", type=int, default=30, help="score >= this counts as flagged")
+    ap.add_argument("--threshold", type=int, default=20, help="score >= this counts as flagged")
     ap.add_argument("--csv", help="write per-email results")
     ap.add_argument("--sweep", action="store_true", help="show recall / false-positive rate for many thresholds")
     a = ap.parse_args(argv)

@@ -241,9 +241,9 @@ def merge_findings(findings):
 
 
 def verdict(score: int) -> str:
-    if score >= 60:
+    if score >= 40:
         return "MALICIOUS"
-    if score >= 30:
+    if score >= 20:
         return "SUSPICIOUS"
     return "LIKELY BENIGN"
 
@@ -306,7 +306,7 @@ th{color:#8b949e;font-weight:600;font-size:12px}code{font-family:SFMono-Regular,
 def render_html(report: dict) -> str:
     e = htmllib.escape
     score = report["score"]
-    color = "#ff7b72" if score >= 60 else "#e3b341" if score >= 30 else "#3fb950"
+    color = "#ff7b72" if score >= 40 else "#e3b341" if score >= 20 else "#3fb950"
     meta = report["meta"]
     ioc = report["iocs"]
 
@@ -364,7 +364,7 @@ def main(argv=None) -> int:
     if args.html:
         with open(args.html, "w", encoding="utf-8") as f:
             f.write(render_html(report))
-    return 0 if report["score"] < 60 else 2
+    return 0 if report["score"] < 40 else 2
 
 
 if __name__ == "__main__":

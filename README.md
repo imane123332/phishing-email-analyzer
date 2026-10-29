@@ -23,22 +23,27 @@ python -m unittest discover -s tests -v       # tests
 Score 0-100: >=60 MALICIOUS, >=30 SUSPICIOUS, else LIKELY BENIGN.
 
 ## Evaluation on real emails
-Run on real phishing from [phishing_pot](https://github.com/rf-peixoto/phishing_pot) (honeypot samples, 12k+ `.eml`).
-Rules were tuned on one random set of 1,500 emails, then measured on a **separate** set of 1,500 that was not used for tuning.
+**Data:** phishing = [phishing_pot](https://github.com/rf-peixoto/phishing_pot) (12,278 real honeypot samples). Legitimate = 300 emails from my own Gmail (Promotions, Updates, Social categories), kept private and not published.
 
-| Version | Set | Phishing flagged (score >= 30) | Parse errors |
-|---|---|---|---|
-| v1 (first rules) | holdout (1,499) | 39.0% | 1 |
-| v2 (+ SPF/DKIM/DMARC "none", hidden text, invalid sender domain, spam words, more languages) | holdout (1,500) | 67.6% | 0 |
-| v2 | tuning set (1,500) | 68.6% | 0 |
+**Method:** a random set of 1,500 phishing + 150 legitimate emails was used to tune the rules. A separate set of 1,500 + 150, never used for tuning, was run **once** for the final result. Alert threshold (score >= 20) was chosen on the tuning set.
+
+| Stage | Phishing detected | Legitimate flagged |
+|---|---|---|
+| First full test (tuning set, threshold 30) | 69.8% | 24.7% (37/150) |
+| After tuning (tuning set, threshold 20) | 69.4% | 2.7% (4/150) |
+| **Final (separate test set, threshold 20)** | **66.8%** (1,002/1,500) | **0.7%** (1/150) |
+
+**What tuning changed:** the first test showed that two of my rules fired on most legitimate newsletters (`hidden_text` on 89%, `return_path_mismatch` on 79%) and that per-link findings added up to a score of 100. I dropped `hidden_text`, made each rule count once per email, and counted a Return-Path mismatch only when DMARC did not pass.
 
 ```bash
-python evaluate.py --phish data/phish --ham data/ham --csv results.csv
+python evaluate.py --phish data/test --ham data/ham_test --sweep
 ```
 
-**Limits (honest):**
-- Only the phishing side is measured. **False-positive rate on legitimate email is not measured yet** (TODO: test on my own legitimate mail, anonymised). Some rules (hidden text, SPF/DKIM "none") also appear in legitimate marketing mail, so the real false-positive rate may not be zero.
-- ~31% of the real phishing samples still score below 30. Many are plain text or image-only scams with no technical red flag, which static rules cannot catch. Next step: URL/IP reputation lookups.
+**Limits:**
+- Only 150 legitimate emails per set. 1 false alarm in 150 means the true rate could be roughly 0.1% to 3.7%.
+- The legitimate emails are automated mail (promotions, updates, social) from one mailbox. No personal or work mail.
+- About one third of the phishing is missed: many are plain-text or image-only scams with no technical red flag. Next step: URL and IP reputation lookups.
+- Precision is not reported because the test set has 10x more phishing than legitimate mail, unlike a real inbox.
 - Static analysis only. Nothing is opened or executed.
 
 ## Roadmap
