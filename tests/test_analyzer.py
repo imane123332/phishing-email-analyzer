@@ -102,6 +102,38 @@ class TestNewRules(unittest.TestCase):
         self.assertIn("invalid_sender_domain", names)
 
 
+class TestWebApp(unittest.TestCase):
+    def test_upload_flow(self):
+        import json
+        import threading
+        import urllib.request
+        import webapp
+        srv = webapp.make_server(0)
+        port = srv.server_address[1]
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        try:
+            home = urllib.request.urlopen(f"http://127.0.0.1:{port}/").read().decode()
+            self.assertIn("Phishing Email Analyzer", home)
+            data = open(os.path.join(S, "phish.eml"), "rb").read()
+            req = urllib.request.Request(f"http://127.0.0.1:{port}/analyze?name=phish.eml",
+                                         data=data, method="POST")
+            out = json.loads(urllib.request.urlopen(req).read())
+            self.assertEqual(out["verdict"], "MALICIOUS")
+            self.assertEqual(out["name"], "phish.eml")
+            self.assertIn("link_text_mismatch", out["html"])
+        finally:
+            srv.shutdown()
+            srv.server_close()
+
+    def test_binds_localhost_only(self):
+        import webapp
+        srv = webapp.make_server(0)
+        try:
+            self.assertEqual(srv.server_address[0], "127.0.0.1")
+        finally:
+            srv.server_close()
+
+
 class TestHelpers(unittest.TestCase):
     def test_domain_of(self):
         self.assertEqual(analyzer.domain_of("a@B.com"), "b.com")
