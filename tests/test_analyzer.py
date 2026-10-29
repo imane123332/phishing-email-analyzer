@@ -78,9 +78,21 @@ class TestEvaluate(unittest.TestCase):
 
 class TestNewRules(unittest.TestCase):
     def test_content_rules(self):
-        html = '<div style="display:none">xxxx</div> Claim 400 free spins'
-        names = {f.rule for f in analyzer.check_language("", html)}
-        self.assertTrue({"spam_keywords", "hidden_text"} <= names)
+        names = {f.rule for f in analyzer.check_language("Claim 400 free spins", "")}
+        self.assertIn("spam_keywords", names)
+
+    def test_rules_count_once(self):
+        r = analyzer.analyze(os.path.join(S, "phish.eml"))
+        names = [f["rule"] for f in r["findings"]]
+        self.assertEqual(len(names), len(set(names)))
+
+    def test_newsletter_return_path_ok_when_dmarc_passes(self):
+        import email
+        from email import policy
+        raw = ("Authentication-Results: mx; dmarc=pass\nFrom: News <a@brand.com>\n"
+               "Return-Path: <bounce@esp-mail.net>\n\nhi")
+        m = email.message_from_string(raw, policy=policy.default)
+        self.assertNotIn("return_path_mismatch", {f.rule for f in analyzer.check_headers(m)[0]})
 
     def test_invalid_sender_domain(self):
         import email

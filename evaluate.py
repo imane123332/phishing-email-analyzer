@@ -42,6 +42,7 @@ def main(argv=None):
     ap.add_argument("--ham", required=True, help="folder of legitimate .eml")
     ap.add_argument("--threshold", type=int, default=30, help="score >= this counts as flagged")
     ap.add_argument("--csv", help="write per-email results")
+    ap.add_argument("--sweep", action="store_true", help="show recall / false-positive rate for many thresholds")
     a = ap.parse_args(argv)
 
     p_rows, p_err = scan(a.phish, "phish", a.threshold)
@@ -67,6 +68,14 @@ def main(argv=None):
     wrong = [r for r in h_rows if r["flagged"]][:10]
     print("\nMissed phishing (first 10):", *[f"\n  {r['file']} score={r['score']}" for r in misses])
     print("\nFalse alarms (first 10):", *[f"\n  {r['file']} score={r['score']}" for r in wrong])
+
+    if a.sweep:
+        print("\nThreshold sweep (flagged if score >= t):")
+        print(f"  {'t':>3}  {'recall':>8}  {'false-pos':>9}  {'precision':>9}")
+        for t in (10, 15, 20, 25, 30, 40, 50, 60):
+            tp_t = sum(r["score"] >= t for r in p_rows)
+            fp_t = sum(r["score"] >= t for r in h_rows)
+            print(f"  {t:>3}  {pct(tp_t, len(p_rows)):>8}  {pct(fp_t, len(h_rows)):>9}  {pct(tp_t, tp_t + fp_t):>9}")
 
     if a.csv:
         with open(a.csv, "w", newline="", encoding="utf-8") as f:

@@ -29,7 +29,6 @@ URGENCY = ["urgent", "immediately", "verify your account", "suspended", "act now
            "verifique su cuenta", "تم تعليق حسابك", "تحقق من حسابك"]
 SPAM_WORDS = ["free spins", "casino", "jackpot", "lottery", "bitcoin giveaway",
               "viagra", "you have won", "vous avez gagné", "claim your prize"]
-HIDDEN_RE = re.compile(r"display\s*:\s*none|font-size\s*:\s*0(px)?\s*[;\"]", re.I)
 URL_RE = re.compile(r"https?://[^\s<>\"')]+", re.I)
 IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
 RECV_IP_RE = re.compile(r"\[?(\d{1,3}(?:\.\d{1,3}){3})\]?")
@@ -123,6 +122,10 @@ def get_bodies(msg):
 
 def check_headers(msg):
     findings = []
+    auth = {}
+    for h in hdr_all(msg, "Authentication-Results"):
+        for mech, res in AUTH_RE.findall(h):
+            auth[mech.lower()] = res.lower()
     disp, from_addr = parseaddr(hdr(msg, "From"))
     from_dom = domain_of(from_addr)
 
@@ -131,11 +134,12 @@ def check_headers(msg):
 
     _, reply_to = parseaddr(hdr(msg, "Reply-To"))
     if reply_to and domain_of(reply_to) != from_dom:
-        findings.append(Finding("reply_to_mismatch", 20,
+        findings.append(Finding("reply_to_mismatch", 12,
                                 f"From={from_dom} but Reply-To={domain_of(reply_to)}"))
 
     _, ret_path = parseaddr(hdr(msg, "Return-Path"))
-    if ret_path and domain_of(ret_path) != from_dom:
+    # Newsletters use a bounce domain from their mail provider; that is normal when DMARC passes.
+    if ret_path and domain_of(ret_path) != from_dom and auth.get("dmarc") != "pass":
         findings.append(Finding("return_path_mismatch", 10,
                                 f"From={from_dom} but Return-Path={domain_of(ret_path)}"))
 
@@ -148,18 +152,12 @@ def check_headers(msg):
                                     f"Display name mentions '{brand}', sender domain is {from_dom}"))
             break
 
-    auth = {}
-    for h in hdr_all(msg, "Authentication-Results"):
-        for mech, res in AUTH_RE.findall(h):
-            auth[mech.lower()] = res.lower()
     for mech in ("spf", "dkim", "dmarc"):
         res = auth.get(mech)
         if res in ("fail", "softfail", "permerror", "temperror"):
             findings.append(Finding(f"{mech}_{res}", 15, f"{mech.upper()}={res}"))
         elif res in ("none", "neutral"):
             findings.append(Finding(f"{mech}_{res}", 8 if mech == "spf" else 4, f"{mech.upper()}={res}"))
-        elif res is None:
-            findings.append(Finding(f"{mech}_missing", 5, f"No {mech.upper()} result in headers"))
     return findings, {"from": from_addr, "display_name": disp, "reply_to": reply_to,
                       "return_path": ret_path, "auth": auth}
 
@@ -182,20 +180,20 @@ def check_urls(plain, html):
             shown = host_of(text if text.startswith("http") else "http://" + text)
             real = host_of(href)
             if shown and real and shown != real:
-                findings.append(Finding("link_text_mismatch", 25,
+                findings.append(Finding("link_text_mismatch", 10,
                                         f"Text shows {shown}, href goes to {real}"))
     for u in sorted(urls):
         h = host_of(u)
         if IP_RE.match(h):
             findings.append(Finding("ip_url", 20, u))
         if h in SHORTENERS:
-            findings.append(Finding("url_shortener", 10, u))
+            findings.append(Finding("url_shortener", 3, u))
         if "xn--" in h:
             findings.append(Finding("punycode_domain", 20, h))
         if h.count(".") >= 4:
             findings.append(Finding("many_subdomains", 10, h))
         if u.lower().startswith("http://"):
-            findings.append(Finding("plain_http", 5, u))
+            findings.append(Finding("plain_http", 3, u))
     return findings, sorted(urls)
 
 
@@ -223,8 +221,22 @@ def check_language(plain, html):
     spam = [k for k in SPAM_WORDS if k in text]
     if spam:
         out.append(Finding("spam_keywords", 10, ", ".join(spam)))
-    if html and HIDDEN_RE.search(html):
-        out.append(Finding("hidden_text", 8, "HTML hides text (display:none / font-size:0)"))
+    return out
+
+
+def merge_findings(findings):
+    """One finding per rule: points count once, details are joined."""
+    merged = {}
+    for f in findings:
+        if f.rule not in merged:
+            merged[f.rule] = [f.points, [f.detail]]
+        else:
+            merged[f.rule][0] = max(merged[f.rule][0], f.points)
+            merged[f.rule][1].append(f.detail)
+    out = []
+    for rule, (pts, details) in merged.items():
+        shown = "; ".join(details[:3]) + (f" (+{len(details) - 3} more)" if len(details) > 3 else "")
+        out.append(Finding(rule, pts, shown))
     return out
 
 
@@ -242,7 +254,7 @@ def analyze(path: str) -> dict:
     f_head, meta = check_headers(msg)
     f_url, urls = check_urls(plain, html)
     f_att, atts = check_attachments(msg)
-    findings = f_head + f_url + f_att + check_language(plain, html)
+    findings = merge_findings(f_head + f_url + f_att + check_language(plain, html))
     score = min(sum(f.points for f in findings), 100)
     return {
         "file": path,
