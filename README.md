@@ -9,18 +9,24 @@ Static analysis of `.eml` files: header forensics, URL and attachment checks, ri
 python analyzer.py samples/phish.eml          # human-readable report
 python analyzer.py samples/phish.eml --json   # machine-readable (exit code 2 if MALICIOUS)
 python analyzer.py samples/phish.eml --html report.html   # dark HTML report
+python webapp.py                              # local web UI at http://127.0.0.1:8000
 python -m unittest discover -s tests -v       # tests
 ```
+
+## Web interface
+`python webapp.py` starts a local site where you drag and drop `.eml` files and get the report in the browser. It uses only the Python standard library, listens on `127.0.0.1` only, and deletes each uploaded file right after the analysis.
+
+![Web UI](samples/screenshot_webapp.png)
 
 ## Detection rules
 | Area | Rules |
 |---|---|
-| Headers | Reply-To / Return-Path mismatch, display-name spoofing (brands, embedded email), SPF/DKIM/DMARC fail or missing |
+| Headers | Reply-To / Return-Path mismatch, display-name spoofing (brands, embedded email), SPF/DKIM/DMARC fail or none |
 | URLs | link text vs href mismatch, IP-based URL, shorteners, punycode, many subdomains, plain HTTP |
 | Attachments | dangerous extensions, double extension (`.pdf.exe`), SHA-256 hashes |
-| Content | urgency language (FR/EN/PT/ES/AR), spam keywords, hidden HTML text |
+| Content | urgency language (FR/EN/PT/ES/AR), spam keywords |
 
-Score 0-100: >=60 MALICIOUS, >=30 SUSPICIOUS, else LIKELY BENIGN.
+Score 0-100: >=40 MALICIOUS, >=20 SUSPICIOUS, else LIKELY BENIGN. Each rule counts once per email.
 
 ## Evaluation on real emails
 **Data:** phishing = [phishing_pot](https://github.com/rf-peixoto/phishing_pot) (12,278 real honeypot samples). Legitimate = 300 emails from my own Gmail (Promotions, Updates, Social categories), kept private and not published.

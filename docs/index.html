@@ -1,0 +1,62 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Phishing Email Analyzer</title>
+<meta name="description" content="Static phishing analysis of .eml files, evaluated on 1,500 real phishing emails.">
+<style>
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:#0d1117;color:#e6edf3;font:16px/1.6 -apple-system,Segoe UI,Roboto,sans-serif}
+a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}.w{max-width:1000px;margin:0 auto;padding:0 24px}
+nav{border-bottom:1px solid #21262d;padding:14px 0}nav .w{display:flex;gap:20px;align-items:center;flex-wrap:wrap}nav b{margin-right:auto}
+.hero{padding:64px 0 32px}h1{font-size:40px;line-height:1.15;margin:0 0 12px}.lead{color:#8b949e;font-size:18px;max-width:680px}
+.btn{display:inline-block;padding:10px 18px;border-radius:8px;font-weight:600;margin:20px 12px 0 0}
+.p{background:#238636;color:#fff}.s{border:1px solid #30363d;color:#e6edf3}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:36px 0}
+.stat{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:18px}.stat b{font-size:32px;display:block}
+.stat span{color:#8b949e;font-size:14px}h2{font-size:24px;margin:48px 0 14px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:18px;margin-bottom:14px}
+table{width:100%;border-collapse:collapse;font-size:15px}th,td{text-align:left;padding:9px 10px;border-bottom:1px solid #21262d;vertical-align:top}
+th{color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.06em}code{font:13px SFMono-Regular,Consolas,monospace;color:#79c0ff}
+.scroll{overflow-x:auto}img{max-width:100%;border-radius:12px;border:1px solid #30363d}
+.shots{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.warn{border-left:3px solid #e3b341}.good{color:#3fb950}.bad{color:#ff7b72}
+footer{border-top:1px solid #21262d;margin-top:56px;padding:24px 0;color:#6e7681;font-size:14px}
+</style></head><body>
+<nav><div class="w"><b>phishing-email-analyzer</b><a href="#results">Results</a><a href="#how">How it works</a><a href="#demo">Demo</a><a href="#limits">Limits</a>
+<a href="https://github.com/imane123332/phishing-email-analyzer">GitHub</a></div></nav>
+<header class="hero"><div class="w">
+<h1>Phishing Email Analyzer</h1>
+<p class="lead">A Python tool that reads an <code>.eml</code> file and checks the sender, SPF/DKIM/DMARC, links and attachments. It gives a risk score and a list of indicators of compromise (IOCs). Static analysis only: nothing is opened or executed.</p>
+<a class="btn p" href="https://github.com/imane123332/phishing-email-analyzer">View the code</a>
+<a class="btn s" href="report_phish.html">Open a sample report</a>
+</div></header>
+<main class="w">
+<section id="results"><h2>Results on real emails</h2>
+<div class="stats">
+<div class="stat"><b class="good">66.8%</b><span>of 1,500 real phishing emails detected (separate test set)</span></div>
+<div class="stat"><b>1 / 150</b><span>legitimate emails flagged (0.7%)</span></div>
+<div class="stat"><b>0</b><span>parse errors on 3,000+ real emails</span></div>
+<div class="stat"><b>18</b><span>unit tests passing</span></div></div>
+<div class="card scroll"><table><tr><th>Stage</th><th>Phishing detected</th><th>Legitimate flagged</th></tr>
+<tr><td>First full test (tuning set, threshold 30)</td><td>69.8%</td><td class="bad">24.7% (37/150)</td></tr>
+<tr><td>After tuning (tuning set, threshold 20)</td><td>69.4%</td><td>2.7% (4/150)</td></tr>
+<tr><td><b>Final (separate test set, threshold 20)</b></td><td><b>66.8%</b></td><td><b>0.7% (1/150)</b></td></tr></table></div>
+<p>Phishing samples come from <a href="https://github.com/rf-peixoto/phishing_pot">phishing_pot</a> (real honeypot emails). The test set was never used for tuning and was run once. The first test showed two of my rules were wrong (they fired on most newsletters), so I removed or fixed them.</p>
+</section>
+<section id="how"><h2>What it checks</h2>
+<div class="card scroll"><table><tr><th>Area</th><th>Rules</th></tr>
+<tr><td>Headers</td><td><code>reply_to_mismatch</code> <code>return_path_mismatch</code> <code>brand_spoofing</code> <code>invalid_sender_domain</code> SPF/DKIM/DMARC fail or none</td></tr>
+<tr><td>URLs</td><td><code>link_text_mismatch</code> <code>ip_url</code> <code>url_shortener</code> <code>punycode_domain</code> <code>many_subdomains</code> <code>plain_http</code></td></tr>
+<tr><td>Attachments</td><td><code>double_extension</code> <code>dangerous_attachment</code> SHA-256 hashes</td></tr>
+<tr><td>Content</td><td><code>urgency_language</code> (FR, EN, PT, ES, AR) <code>spam_keywords</code></td></tr></table></div>
+<p>Each rule counts once per email. Score 20 or more is SUSPICIOUS and 40 or more is MALICIOUS.</p></section>
+<section id="demo"><h2>Demo</h2>
+<div class="shots"><a href="report_phish.html"><img src="screenshot_phish.png" alt="Report for a malicious email"></a>
+<a href="screenshot_webapp.png"><img src="screenshot_webapp.png" alt="Local web interface"></a></div>
+<p>Open the <a href="report_phish.html">malicious sample report</a> or the <a href="report_benign.html">benign sample report</a>. The samples are fake emails written for the tests. To analyse your own emails, run the tool locally: <code>python webapp.py</code>. Emails are never uploaded anywhere.</p></section>
+<section id="limits"><h2>Limits</h2>
+<div class="card warn"><ul>
+<li>Only 150 legitimate emails per set, so 1 false alarm could mean a true rate of roughly 0.1% to 3.7%.</li>
+<li>The legitimate emails are promotions, updates and social mail from one mailbox, not personal or work mail.</li>
+<li>About one third of the phishing is missed: plain-text or image-only scams with no technical red flag.</li>
+<li>Next step: URL and IP reputation lookups (VirusTotal, AbuseIPDB) and MITRE ATT&amp;CK tagging.</li></ul></div></section>
+</main>
+<footer><div class="w">Built by Imane &middot; Cybersecurity engineering student, ENSA Agadir &middot; <a href="https://github.com/imane123332/phishing-email-analyzer">Source on GitHub</a></div></footer>
+</body></html>
