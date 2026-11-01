@@ -19,13 +19,14 @@ th{color:#8b949e;font-size:12px;text-transform:uppercase;letter-spacing:.06em}co
 .warn{border-left:3px solid #e3b341}.good{color:#3fb950}.bad{color:#ff7b72}
 footer{border-top:1px solid #21262d;margin-top:56px;padding:24px 0;color:#6e7681;font-size:14px}
 </style></head><body>
-<nav><div class="w"><b>phishing-email-analyzer</b><a href="#results">Results</a><a href="#how">How it works</a><a href="#demo">Demo</a><a href="#limits">Limits</a>
+<nav><div class="w"><b>phishing-email-analyzer</b><a href="demo.html"><b>Live demo</b></a><a href="#results">Results</a><a href="#how">How it works</a><a href="#demo">Demo</a><a href="#limits">Limits</a>
 <a href="https://github.com/imane123332/phishing-email-analyzer">GitHub</a></div></nav>
 <header class="hero"><div class="w">
 <h1>Phishing Email Analyzer</h1>
 <p class="lead">A Python tool that reads an <code>.eml</code> file and checks the sender, SPF/DKIM/DMARC, links and attachments. It gives a risk score and a list of indicators of compromise (IOCs). Static analysis only: nothing is opened or executed.</p>
-<a class="btn p" href="https://github.com/imane123332/phishing-email-analyzer">View the code</a>
-<a class="btn s" href="report_phish.html">Open a sample report</a>
+<a class="btn p" href="demo.html">Try the live demo</a>
+<a class="btn s" href="https://github.com/imane123332/phishing-email-analyzer">View the code</a>
+<a class="btn s" href="report_phish.html">Sample report</a>
 </div></header>
 <main class="w">
 <section id="results"><h2>Results on real emails</h2>
@@ -33,7 +34,7 @@ footer{border-top:1px solid #21262d;margin-top:56px;padding:24px 0;color:#6e7681
 <div class="stat"><b class="good">66.8%</b><span>of 1,500 real phishing emails detected (separate test set)</span></div>
 <div class="stat"><b>1 / 150</b><span>legitimate emails flagged (0.7%)</span></div>
 <div class="stat"><b>0</b><span>parse errors on 3,000+ real emails</span></div>
-<div class="stat"><b>18</b><span>unit tests passing</span></div></div>
+<div class="stat"><b>35</b><span>unit tests passing</span></div></div>
 <div class="card scroll"><table><tr><th>Stage</th><th>Phishing detected</th><th>Legitimate flagged</th></tr>
 <tr><td>First full test (tuning set, threshold 30)</td><td>69.8%</td><td class="bad">24.7% (37/150)</td></tr>
 <tr><td>After tuning (tuning set, threshold 20)</td><td>69.4%</td><td>2.7% (4/150)</td></tr>
@@ -46,11 +47,19 @@ footer{border-top:1px solid #21262d;margin-top:56px;padding:24px 0;color:#6e7681
 <tr><td>URLs</td><td><code>link_text_mismatch</code> <code>ip_url</code> <code>url_shortener</code> <code>punycode_domain</code> <code>many_subdomains</code> <code>plain_http</code></td></tr>
 <tr><td>Attachments</td><td><code>double_extension</code> <code>dangerous_attachment</code> SHA-256 hashes</td></tr>
 <tr><td>Content</td><td><code>urgency_language</code> (FR, EN, PT, ES, AR) <code>spam_keywords</code></td></tr></table></div>
-<p>Each rule counts once per email. Score 20 or more is SUSPICIOUS and 40 or more is MALICIOUS.</p></section>
+<p>Each rule counts once per email. Score 20 or more is SUSPICIOUS and 40 or more is MALICIOUS.</p>
+<h2>What you get out</h2>
+<div class="card scroll"><table><tr><th>Output</th><th>Use</th></tr>
+<tr><td>Risk score and findings</td><td>Terminal, JSON, or the dark HTML report</td></tr>
+<tr><td>MITRE ATT&amp;CK tags</td><td>Each finding is linked to the technique it is evidence for (for example T1566.002 Spearphishing Link)</td></tr>
+<tr><td>Incident report (Markdown)</td><td>Defanged indicators, recommended response steps, and suggested ISO/IEC 27001:2022 Annex A controls</td></tr>
+<tr><td>IOC export</td><td>CSV and STIX 2.1 bundle for a SIEM or threat-intelligence platform</td></tr>
+<tr><td>Optional lookups</td><td>VirusTotal and AbuseIPDB for domains, IPs and hashes. Off by default, and not part of the evaluation numbers above</td></tr></table></div>
+</section>
 <section id="demo"><h2>Demo</h2>
 <div class="shots"><a href="report_phish.html"><img src="screenshot_phish.png" alt="Report for a malicious email"></a>
 <a href="screenshot_webapp.png"><img src="screenshot_webapp.png" alt="Local web interface"></a></div>
-<p>Open the <a href="report_phish.html">malicious sample report</a> or the <a href="report_benign.html">benign sample report</a>. The samples are fake emails written for the tests. To analyse your own emails, run the tool locally: <code>python webapp.py</code>. Emails are never uploaded anywhere.</p></section>
+<p>Open the <a href="report_phish.html">malicious sample report</a> or the <a href="report_benign.html">benign sample report</a>. The samples are fake emails written for the tests. The <a href="demo.html">live demo</a> runs the real Python code in your browser, so you can try the samples or your own email, and move a slider to see the detection / false-alarm trade-off. Emails are never uploaded anywhere.</p></section>
 <section id="limits"><h2>Limits</h2>
 <div class="card warn"><ul>
 <li>Only 150 legitimate emails per set, so 1 false alarm could mean a true rate of roughly 0.1% to 3.7%.</li>
