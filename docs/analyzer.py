@@ -1,0 +1,457 @@
+#!/usr/bin/env python3
+"""phishing-analyzer: static analysis of .eml files (stdlib only).
+
+Usage: python analyzer.py samples/phish.eml [--json]
+"""
+import argparse
+import hashlib
+import html as htmllib
+import json
+import re
+import sys
+from dataclasses import dataclass, asdict
+from email import policy
+from email.parser import BytesParser
+from email.utils import parseaddr
+from html.parser import HTMLParser
+from urllib.parse import urlparse
+
+SHORTENERS = {"bit.ly", "tinyurl.com", "t.co", "goo.gl", "ow.ly", "is.gd", "cutt.ly", "rb.gy"}
+DANGEROUS_EXT = {".exe", ".scr", ".js", ".vbs", ".bat", ".cmd", ".ps1", ".jar",
+                 ".lnk", ".iso", ".img", ".hta", ".docm", ".xlsm", ".html", ".htm"}
+DOUBLE_EXT_RE = re.compile(r"\.\w{2,5}\.(exe|scr|js|vbs|bat|cmd|lnk|hta|ps1)$", re.I)
+BRANDS = ["paypal", "microsoft", "apple", "amazon", "google", "netflix", "dhl",
+          "attijariwafa", "cih", "bmce", "maroc telecom", "inwi", "orange", "cnss", "dgi"]
+URGENCY = ["urgent", "immediately", "verify your account", "suspended", "act now",
+           "password expires", "urgence", "immédiatement", "vérifiez votre compte",
+           "compte suspendu", "mot de passe expire", "dernier avertissement",
+           "conta bloqueada", "regularize", "tributos", "cuenta suspendida",
+           "verifique su cuenta", "تم تعليق حسابك", "تحقق من حسابك"]
+SPAM_WORDS = ["free spins", "casino", "jackpot", "lottery", "bitcoin giveaway",
+              "viagra", "you have won", "vous avez gagné", "claim your prize"]
+URL_RE = re.compile(r"https?://[^\s<>\"')]+", re.I)
+IP_RE = re.compile(r"^\d{1,3}(\.\d{1,3}){3}$")
+RECV_IP_RE = re.compile(r"\[?(\d{1,3}(?:\.\d{1,3}){3})\]?")
+AUTH_RE = re.compile(r"\b(spf|dkim|dmarc)=(\w+)", re.I)
+
+
+# MITRE ATT&CK techniques (Enterprise) that each rule gives evidence for.
+TECHNIQUES = {
+    "T1566": "Phishing",
+    "T1566.001": "Phishing: Spearphishing Attachment",
+    "T1566.002": "Phishing: Spearphishing Link",
+    "T1204.001": "User Execution: Malicious Link",
+    "T1204.002": "User Execution: Malicious File",
+    "T1036.007": "Masquerading: Double File Extension",
+    "T1656": "Impersonation",
+}
+RULE_TECHNIQUES = {
+    "reply_to_mismatch": ["T1566"],
+    "return_path_mismatch": ["T1566"],
+    "invalid_sender_domain": ["T1566"],
+    "brand_spoofing": ["T1656"],
+    "display_name_has_email": ["T1656"],
+    "link_text_mismatch": ["T1566.002", "T1204.001"],
+    "ip_url": ["T1566.002"],
+    "url_shortener": ["T1566.002"],
+    "punycode_domain": ["T1566.002"],
+    "many_subdomains": ["T1566.002"],
+    "double_extension": ["T1566.001", "T1204.002", "T1036.007"],
+    "dangerous_attachment": ["T1566.001", "T1204.002"],
+}
+for _m in ("spf", "dkim", "dmarc"):
+    RULE_TECHNIQUES[f"{_m}_fail"] = ["T1566"]
+    RULE_TECHNIQUES[f"{_m}_softfail"] = ["T1566"]
+
+
+@dataclass
+class Finding:
+    rule: str
+    points: int
+    detail: str
+
+
+class LinkExtractor(HTMLParser):
+    """Collect (href, visible text) pairs from HTML."""
+
+    def __init__(self):
+        super().__init__()
+        self.links = []
+        self._href = None
+        self._text = []
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "a":
+            self._href = dict(attrs).get("href")
+            self._text = []
+
+    def handle_data(self, data):
+        if self._href is not None:
+            self._text.append(data)
+
+    def handle_endtag(self, tag):
+        if tag == "a" and self._href is not None:
+            self.links.append((self._href, "".join(self._text).strip()))
+            self._href = None
+
+
+def hdr(msg, name: str) -> str:
+    """Safe header read: malformed real-world headers can crash the email parser."""
+    try:
+        return str(msg.get(name, ""))
+    except Exception:
+        for k, v in msg.raw_items():
+            if k.lower() == name.lower():
+                return str(v)
+        return ""
+
+
+def hdr_all(msg, name: str):
+    try:
+        return [str(v) for v in msg.get_all(name, [])]
+    except Exception:
+        return [str(v) for k, v in msg.raw_items() if k.lower() == name.lower()]
+
+
+def domain_of(addr: str) -> str:
+    return addr.rsplit("@", 1)[-1].lower().strip(">") if "@" in addr else ""
+
+
+def host_of(url: str) -> str:
+    try:
+        return (urlparse(url).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def parse_eml(path: str):
+    with open(path, "rb") as f:
+        return BytesParser(policy=policy.default).parse(f)
+
+
+def _part_text(part) -> str:
+    """Decode a body part; real emails often have broken charsets."""
+    try:
+        return part.get_content()
+    except (LookupError, UnicodeDecodeError, AttributeError, KeyError):
+        raw = part.get_payload(decode=True) or b""
+        return raw.decode("utf-8", errors="replace")
+
+
+def get_bodies(msg):
+    plain = html = ""
+    p = msg.get_body(preferencelist=("plain",))
+    h = msg.get_body(preferencelist=("html",))
+    if p:
+        plain = _part_text(p)
+    if h:
+        html = _part_text(h)
+    return plain, html
+
+
+def check_headers(msg):
+    findings = []
+    auth = {}
+    for h in hdr_all(msg, "Authentication-Results"):
+        for mech, res in AUTH_RE.findall(h):
+            auth[mech.lower()] = res.lower()
+    disp, from_addr = parseaddr(hdr(msg, "From"))
+    from_dom = domain_of(from_addr)
+
+    if from_dom and "." not in from_dom:
+        findings.append(Finding("invalid_sender_domain", 20, f"Sender domain '{from_dom}' has no TLD"))
+
+    _, reply_to = parseaddr(hdr(msg, "Reply-To"))
+    if reply_to and domain_of(reply_to) != from_dom:
+        findings.append(Finding("reply_to_mismatch", 12,
+                                f"From={from_dom} but Reply-To={domain_of(reply_to)}"))
+
+    _, ret_path = parseaddr(hdr(msg, "Return-Path"))
+    # Newsletters use a bounce domain from their mail provider; that is normal when DMARC passes.
+    if ret_path and domain_of(ret_path) != from_dom and auth.get("dmarc") != "pass":
+        findings.append(Finding("return_path_mismatch", 10,
+                                f"From={from_dom} but Return-Path={domain_of(ret_path)}"))
+
+    d = disp.lower()
+    if "@" in d and domain_of(d.split()[-1]) != from_dom:
+        findings.append(Finding("display_name_has_email", 15, f"Display name '{disp}'"))
+    for brand in BRANDS:
+        if brand in d and brand.replace(" ", "") not in from_dom.replace("-", ""):
+            findings.append(Finding("brand_spoofing", 25,
+                                    f"Display name mentions '{brand}', sender domain is {from_dom}"))
+            break
+
+    for mech in ("spf", "dkim", "dmarc"):
+        res = auth.get(mech)
+        if res in ("fail", "softfail", "permerror", "temperror"):
+            findings.append(Finding(f"{mech}_{res}", 15, f"{mech.upper()}={res}"))
+        elif res in ("none", "neutral"):
+            findings.append(Finding(f"{mech}_{res}", 8 if mech == "spf" else 4, f"{mech.upper()}={res}"))
+    return findings, {"from": from_addr, "display_name": disp, "reply_to": reply_to,
+                      "return_path": ret_path, "auth": auth}
+
+
+def received_ips(msg):
+    ips = []
+    for h in hdr_all(msg, "Received"):
+        ips.extend(RECV_IP_RE.findall(h))
+    return list(dict.fromkeys(ips))
+
+
+def check_urls(plain, html):
+    findings, urls = [], set(URL_RE.findall(plain))
+    ext = LinkExtractor()
+    if html:
+        ext.feed(html)
+        urls.update(h for h, _ in ext.links if h and h.startswith("http"))
+    for href, text in ext.links:
+        if href and text and re.match(r"(https?://|www\.)", text, re.I):
+            shown = host_of(text if text.startswith("http") else "http://" + text)
+            real = host_of(href)
+            if shown and real and shown != real:
+                findings.append(Finding("link_text_mismatch", 10,
+                                        f"Text shows {shown}, href goes to {real}"))
+    for u in sorted(urls):
+        h = host_of(u)
+        if IP_RE.match(h):
+            findings.append(Finding("ip_url", 20, u))
+        if h in SHORTENERS:
+            findings.append(Finding("url_shortener", 3, u))
+        if "xn--" in h:
+            findings.append(Finding("punycode_domain", 20, h))
+        if h.count(".") >= 4:
+            findings.append(Finding("many_subdomains", 10, h))
+        if u.lower().startswith("http://"):
+            findings.append(Finding("plain_http", 3, u))
+    return findings, sorted(urls)
+
+
+def check_attachments(msg):
+    findings, items = [], []
+    for part in msg.iter_attachments():
+        name = part.get_filename() or "(unnamed)"
+        data = part.get_payload(decode=True) or b""
+        items.append({"filename": name, "size": len(data),
+                      "sha256": hashlib.sha256(data).hexdigest()})
+        low = name.lower()
+        if DOUBLE_EXT_RE.search(low):
+            findings.append(Finding("double_extension", 30, name))
+        elif any(low.endswith(e) for e in DANGEROUS_EXT):
+            findings.append(Finding("dangerous_attachment", 25, name))
+    return findings, items
+
+
+def check_language(plain, html):
+    text = (plain + " " + re.sub(r"<[^>]+>", " ", html)).lower()
+    out = []
+    hits = [k for k in URGENCY if k in text]
+    if hits:
+        out.append(Finding("urgency_language", min(5 * len(hits), 15), ", ".join(hits)))
+    spam = [k for k in SPAM_WORDS if k in text]
+    if spam:
+        out.append(Finding("spam_keywords", 10, ", ".join(spam)))
+    return out
+
+
+def merge_findings(findings):
+    """One finding per rule: points count once, details are joined."""
+    merged = {}
+    for f in findings:
+        if f.rule not in merged:
+            merged[f.rule] = [f.points, [f.detail]]
+        else:
+            merged[f.rule][0] = max(merged[f.rule][0], f.points)
+            merged[f.rule][1].append(f.detail)
+    out = []
+    for rule, (pts, details) in merged.items():
+        shown = "; ".join(details[:3]) + (f" (+{len(details) - 3} more)" if len(details) > 3 else "")
+        out.append(Finding(rule, pts, shown))
+    return out
+
+
+def attack_summary(rule_names):
+    """Group the rules that fired by ATT&CK technique."""
+    found = {}
+    for rule in rule_names:
+        for tid in RULE_TECHNIQUES.get(rule, []):
+            found.setdefault(tid, []).append(rule)
+    return [{"id": t, "name": TECHNIQUES[t], "rules": found[t]} for t in sorted(found)]
+
+
+def verdict(score: int) -> str:
+    if score >= 40:
+        return "MALICIOUS"
+    if score >= 20:
+        return "SUSPICIOUS"
+    return "LIKELY BENIGN"
+
+
+def analyze(path: str) -> dict:
+    msg = parse_eml(path)
+    plain, html = get_bodies(msg)
+    f_head, meta = check_headers(msg)
+    f_url, urls = check_urls(plain, html)
+    f_att, atts = check_attachments(msg)
+    findings = merge_findings(f_head + f_url + f_att + check_language(plain, html))
+    score = min(sum(f.points for f in findings), 100)
+    return {
+        "file": path,
+        "subject": hdr(msg, "Subject"),
+        "meta": meta,
+        "score": score,
+        "verdict": verdict(score),
+        "findings": [asdict(f) for f in findings],
+        "attack": attack_summary(f.rule for f in findings),
+        "iocs": {"urls": urls, "domains": sorted({host_of(u) for u in urls}),
+                 "received_ips": received_ips(msg), "attachments": atts},
+    }
+
+
+def render(report: dict) -> str:
+    lines = [f"File    : {report['file']}",
+             f"Subject : {report['subject']}",
+             f"From    : {report['meta']['display_name']} <{report['meta']['from']}>",
+             f"Score   : {report['score']}/100 -> {report['verdict']}", "", "Findings:"]
+    for f in report["findings"] or [{"rule": "none", "points": 0, "detail": ""}]:
+        lines.append(f"  [+{f['points']:>2}] {f['rule']}: {f['detail']}")
+    if report.get("attack"):
+        lines += ["", "MITRE ATT&CK:"]
+        lines += [f"  {t['id']:<10} {t['name']}" for t in report["attack"]]
+    ioc = report["iocs"]
+    lines += ["", "IOCs:", f"  domains : {', '.join(ioc['domains']) or '-'}",
+              f"  ips     : {', '.join(ioc['received_ips']) or '-'}"]
+    for a in ioc["attachments"]:
+        lines.append(f"  attach  : {a['filename']} sha256={a['sha256']}")
+    return "\n".join(lines)
+
+
+HTML_CSS = """
+*{box-sizing:border-box}body{margin:0;background:#0d1117;color:#e6edf3;font:15px/1.5 -apple-system,Segoe UI,Roboto,sans-serif;padding:32px}
+.wrap{max-width:980px;margin:0 auto}h1{font-size:22px;margin:0 0 4px}.sub{color:#8b949e;margin-bottom:24px}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:20px;margin-bottom:18px}
+.top{display:flex;gap:24px;align-items:center;flex-wrap:wrap}
+.gauge{width:130px;height:130px;border-radius:50%;display:grid;place-items:center;flex:none}
+.gauge div{width:100px;height:100px;border-radius:50%;background:#161b22;display:grid;place-items:center;text-align:center}
+.gauge b{font-size:30px;display:block;line-height:1}.gauge span{font-size:11px;color:#8b949e}
+.verdict{font-size:24px;font-weight:700}.kv{color:#8b949e}.kv code{color:#e6edf3}
+h2{font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:#8b949e;margin:0 0 12px}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:8px 10px;border-bottom:1px solid #21262d;vertical-align:top;word-break:break-word}
+th{color:#8b949e;font-weight:600;font-size:12px}code{font-family:SFMono-Regular,Consolas,monospace;font-size:13px;color:#79c0ff}
+.pill{display:inline-block;min-width:44px;text-align:center;padding:2px 8px;border-radius:999px;font-weight:700;font-size:12px}
+.hi{background:#da363433;color:#ff7b72}.md{background:#d2992233;color:#e3b341}.lo{background:#2f81f733;color:#79c0ff}
+.auth{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.chip{padding:3px 10px;border-radius:6px;font-size:13px;font-weight:600}
+.pass{background:#23863633;color:#3fb950}.bad{background:#da363433;color:#ff7b72}.none{background:#30363d;color:#8b949e}
+.foot{color:#6e7681;font-size:12px;text-align:center;margin-top:20px}
+.tech{display:inline-block;margin:0 8px 8px 0;padding:4px 10px;border-radius:8px;background:#1f6feb22;color:#79c0ff;font-size:13px}
+.tech b{color:#e6edf3}.note{color:#8b949e;font-size:13px;margin-top:6px}
+"""
+
+
+def render_html(report: dict) -> str:
+    e = htmllib.escape
+    score = report["score"]
+    color = "#ff7b72" if score >= 40 else "#e3b341" if score >= 20 else "#3fb950"
+    meta = report["meta"]
+    ioc = report["iocs"]
+
+    def pill(pts):
+        cls = "hi" if pts >= 20 else "md" if pts >= 10 else "lo"
+        return f'<span class="pill {cls}">+{pts}</span>'
+
+    rows = "".join(
+        f"<tr><td>{pill(f['points'])}</td><td><code>{e(f['rule'])}</code></td><td>{e(f['detail'])}</td></tr>"
+        for f in report["findings"]
+    ) or '<tr><td colspan="3">No findings</td></tr>'
+
+    chips = ""
+    for mech in ("spf", "dkim", "dmarc"):
+        res = meta["auth"].get(mech)
+        cls = "pass" if res == "pass" else "none" if res is None else "bad"
+        chips += f'<span class="chip {cls}">{mech.upper()}: {e(res or "n/a")}</span>'
+
+    def list_rows(items):
+        return "".join(f"<tr><td><code>{e(i)}</code></td></tr>" for i in items) or "<tr><td>-</td></tr>"
+
+    atts = "".join(
+        f"<tr><td>{e(a['filename'])}</td><td>{a['size']} B</td><td><code>{a['sha256']}</code></td></tr>"
+        for a in ioc["attachments"]
+    ) or '<tr><td colspan="3">-</td></tr>'
+
+    attack_card = ""
+    if report.get("attack"):
+        tech_chips = "".join(f'<span class="tech"><b>{e(t["id"])}</b> {e(t["name"])}</span>' for t in report["attack"])
+        attack_card = f'<div class="card"><h2>MITRE ATT&amp;CK techniques</h2>{tech_chips}</div>'
+    enrich_card = ""
+    enr = report.get("enrichment")
+    if enr:
+        rows = "".join(
+            f"<tr><td>{e(x['source'])}</td><td><code>{e(x['value'])}</code></td><td>{e(x['summary'])}</td></tr>"
+            for x in enr.get("results", [])) or '<tr><td colspan="3">No results</td></tr>'
+        enrich_card = ('<div class="card"><h2>Threat intelligence lookups</h2><table><tr><th>Source</th>'
+                       f'<th>Indicator</th><th>Result</th></tr>{rows}</table>'
+                       '<div class="note">Indicators were sent to third-party services.</div></div>')
+    return f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Phishing report</title>
+<style>{HTML_CSS}</style></head><body><div class="wrap">
+<h1>Phishing Email Analysis</h1><div class="sub">{e(report['file'])}</div>
+<div class="card top">
+<div class="gauge" style="background:conic-gradient({color} {score * 3.6}deg,#30363d 0)"><div><p style="margin:0"><b>{score}</b><span>/ 100</span></p></div></div>
+<div><div class="verdict" style="color:{color}">{e(report['verdict'])}</div>
+<div class="kv">Subject: <code>{e(report['subject'])}</code></div>
+<div class="kv">From: <code>{e(meta['display_name'])} &lt;{e(meta['from'])}&gt;</code></div>
+<div class="kv">Reply-To: <code>{e(meta['reply_to'] or '-')}</code> &nbsp; Return-Path: <code>{e(meta['return_path'] or '-')}</code></div>
+<div class="auth">{chips}</div></div></div>
+<div class="card"><h2>Findings ({len(report['findings'])})</h2><table><tr><th>Points</th><th>Rule</th><th>Detail</th></tr>{rows}</table></div>
+{attack_card}{enrich_card}<div class="card"><h2>Indicators of Compromise</h2>
+<table><tr><th>Domains</th></tr>{list_rows(ioc['domains'])}</table><br>
+<table><tr><th>Received IPs</th></tr>{list_rows(ioc['received_ips'])}</table><br>
+<table><tr><th>Attachment</th><th>Size</th><th>SHA-256</th></tr>{atts}</table></div>
+<div class="foot">phishing-email-analyzer &middot; static analysis only</div>
+</div></body></html>"""
+
+
+def _write(path, text):
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
+def main(argv=None) -> int:
+    ap = argparse.ArgumentParser(description="Static phishing analysis of .eml files")
+    ap.add_argument("eml")
+    ap.add_argument("--json", action="store_true", help="JSON output")
+    ap.add_argument("--html", metavar="FILE", help="also write a dark HTML report")
+    ap.add_argument("--incident-report", metavar="FILE", help="write a Markdown incident report with actions")
+    ap.add_argument("--iocs-csv", metavar="FILE", help="write indicators of compromise as CSV")
+    ap.add_argument("--stix", metavar="FILE", help="write indicators as a STIX 2.1 bundle (JSON)")
+    ap.add_argument("--enrich", action="store_true",
+                    help="look up domains, IPs and hashes on VirusTotal / AbuseIPDB "
+                         "(keys in VT_API_KEY / ABUSEIPDB_API_KEY; sends indicators to third parties)")
+    args = ap.parse_args(argv)
+    report = analyze(args.eml)
+    if args.enrich:
+        import enrich  # optional module: keeps analyzer.py usable on its own (e.g. in the browser demo)
+        enricher = enrich.Enricher.from_env(cache_path=".enrich_cache.json")
+        if enricher.enabled:
+            report = enrich.enrich_report(report, enricher)
+        else:
+            print("No API key found: set VT_API_KEY and/or ABUSEIPDB_API_KEY. Continuing offline.", file=sys.stderr)
+    print(json.dumps(report, indent=2, ensure_ascii=False) if args.json else render(report))
+    if args.html:
+        _write(args.html, render_html(report))
+    if args.incident_report or args.iocs_csv or args.stix:
+        import reports
+        if args.incident_report:
+            _write(args.incident_report, reports.incident_report_md(report))
+        if args.iocs_csv:
+            _write(args.iocs_csv, reports.iocs_csv(report))
+        if args.stix:
+            bundle = reports.stix_bundle(report)
+            if bundle is None:
+                print("STIX: nothing to export (email looks benign or has no indicators).", file=sys.stderr)
+            else:
+                _write(args.stix, json.dumps(bundle, indent=2))
+    return 0 if report["score"] < 40 else 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

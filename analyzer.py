@@ -35,6 +35,35 @@ RECV_IP_RE = re.compile(r"\[?(\d{1,3}(?:\.\d{1,3}){3})\]?")
 AUTH_RE = re.compile(r"\b(spf|dkim|dmarc)=(\w+)", re.I)
 
 
+# MITRE ATT&CK techniques (Enterprise) that each rule gives evidence for.
+TECHNIQUES = {
+    "T1566": "Phishing",
+    "T1566.001": "Phishing: Spearphishing Attachment",
+    "T1566.002": "Phishing: Spearphishing Link",
+    "T1204.001": "User Execution: Malicious Link",
+    "T1204.002": "User Execution: Malicious File",
+    "T1036.007": "Masquerading: Double File Extension",
+    "T1656": "Impersonation",
+}
+RULE_TECHNIQUES = {
+    "reply_to_mismatch": ["T1566"],
+    "return_path_mismatch": ["T1566"],
+    "invalid_sender_domain": ["T1566"],
+    "brand_spoofing": ["T1656"],
+    "display_name_has_email": ["T1656"],
+    "link_text_mismatch": ["T1566.002", "T1204.001"],
+    "ip_url": ["T1566.002"],
+    "url_shortener": ["T1566.002"],
+    "punycode_domain": ["T1566.002"],
+    "many_subdomains": ["T1566.002"],
+    "double_extension": ["T1566.001", "T1204.002", "T1036.007"],
+    "dangerous_attachment": ["T1566.001", "T1204.002"],
+}
+for _m in ("spf", "dkim", "dmarc"):
+    RULE_TECHNIQUES[f"{_m}_fail"] = ["T1566"]
+    RULE_TECHNIQUES[f"{_m}_softfail"] = ["T1566"]
+
+
 @dataclass
 class Finding:
     rule: str
@@ -240,6 +269,15 @@ def merge_findings(findings):
     return out
 
 
+def attack_summary(rule_names):
+    """Group the rules that fired by ATT&CK technique."""
+    found = {}
+    for rule in rule_names:
+        for tid in RULE_TECHNIQUES.get(rule, []):
+            found.setdefault(tid, []).append(rule)
+    return [{"id": t, "name": TECHNIQUES[t], "rules": found[t]} for t in sorted(found)]
+
+
 def verdict(score: int) -> str:
     if score >= 40:
         return "MALICIOUS"
@@ -263,6 +301,7 @@ def analyze(path: str) -> dict:
         "score": score,
         "verdict": verdict(score),
         "findings": [asdict(f) for f in findings],
+        "attack": attack_summary(f.rule for f in findings),
         "iocs": {"urls": urls, "domains": sorted({host_of(u) for u in urls}),
                  "received_ips": received_ips(msg), "attachments": atts},
     }
@@ -275,6 +314,9 @@ def render(report: dict) -> str:
              f"Score   : {report['score']}/100 -> {report['verdict']}", "", "Findings:"]
     for f in report["findings"] or [{"rule": "none", "points": 0, "detail": ""}]:
         lines.append(f"  [+{f['points']:>2}] {f['rule']}: {f['detail']}")
+    if report.get("attack"):
+        lines += ["", "MITRE ATT&CK:"]
+        lines += [f"  {t['id']:<10} {t['name']}" for t in report["attack"]]
     ioc = report["iocs"]
     lines += ["", "IOCs:", f"  domains : {', '.join(ioc['domains']) or '-'}",
               f"  ips     : {', '.join(ioc['received_ips']) or '-'}"]
@@ -300,6 +342,8 @@ th{color:#8b949e;font-weight:600;font-size:12px}code{font-family:SFMono-Regular,
 .auth{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}.chip{padding:3px 10px;border-radius:6px;font-size:13px;font-weight:600}
 .pass{background:#23863633;color:#3fb950}.bad{background:#da363433;color:#ff7b72}.none{background:#30363d;color:#8b949e}
 .foot{color:#6e7681;font-size:12px;text-align:center;margin-top:20px}
+.tech{display:inline-block;margin:0 8px 8px 0;padding:4px 10px;border-radius:8px;background:#1f6feb22;color:#79c0ff;font-size:13px}
+.tech b{color:#e6edf3}.note{color:#8b949e;font-size:13px;margin-top:6px}
 """
 
 
@@ -333,6 +377,19 @@ def render_html(report: dict) -> str:
         for a in ioc["attachments"]
     ) or '<tr><td colspan="3">-</td></tr>'
 
+    attack_card = ""
+    if report.get("attack"):
+        tech_chips = "".join(f'<span class="tech"><b>{e(t["id"])}</b> {e(t["name"])}</span>' for t in report["attack"])
+        attack_card = f'<div class="card"><h2>MITRE ATT&amp;CK techniques</h2>{tech_chips}</div>'
+    enrich_card = ""
+    enr = report.get("enrichment")
+    if enr:
+        rows = "".join(
+            f"<tr><td>{e(x['source'])}</td><td><code>{e(x['value'])}</code></td><td>{e(x['summary'])}</td></tr>"
+            for x in enr.get("results", [])) or '<tr><td colspan="3">No results</td></tr>'
+        enrich_card = ('<div class="card"><h2>Threat intelligence lookups</h2><table><tr><th>Source</th>'
+                       f'<th>Indicator</th><th>Result</th></tr>{rows}</table>'
+                       '<div class="note">Indicators were sent to third-party services.</div></div>')
     return f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Phishing report</title>
 <style>{HTML_CSS}</style></head><body><div class="wrap">
@@ -345,7 +402,7 @@ def render_html(report: dict) -> str:
 <div class="kv">Reply-To: <code>{e(meta['reply_to'] or '-')}</code> &nbsp; Return-Path: <code>{e(meta['return_path'] or '-')}</code></div>
 <div class="auth">{chips}</div></div></div>
 <div class="card"><h2>Findings ({len(report['findings'])})</h2><table><tr><th>Points</th><th>Rule</th><th>Detail</th></tr>{rows}</table></div>
-<div class="card"><h2>Indicators of Compromise</h2>
+{attack_card}{enrich_card}<div class="card"><h2>Indicators of Compromise</h2>
 <table><tr><th>Domains</th></tr>{list_rows(ioc['domains'])}</table><br>
 <table><tr><th>Received IPs</th></tr>{list_rows(ioc['received_ips'])}</table><br>
 <table><tr><th>Attachment</th><th>Size</th><th>SHA-256</th></tr>{atts}</table></div>
@@ -353,17 +410,46 @@ def render_html(report: dict) -> str:
 </div></body></html>"""
 
 
+def _write(path, text):
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Static phishing analysis of .eml files")
     ap.add_argument("eml")
     ap.add_argument("--json", action="store_true", help="JSON output")
     ap.add_argument("--html", metavar="FILE", help="also write a dark HTML report")
+    ap.add_argument("--incident-report", metavar="FILE", help="write a Markdown incident report with actions")
+    ap.add_argument("--iocs-csv", metavar="FILE", help="write indicators of compromise as CSV")
+    ap.add_argument("--stix", metavar="FILE", help="write indicators as a STIX 2.1 bundle (JSON)")
+    ap.add_argument("--enrich", action="store_true",
+                    help="look up domains, IPs and hashes on VirusTotal / AbuseIPDB "
+                         "(keys in VT_API_KEY / ABUSEIPDB_API_KEY; sends indicators to third parties)")
     args = ap.parse_args(argv)
     report = analyze(args.eml)
+    if args.enrich:
+        import enrich  # optional module: keeps analyzer.py usable on its own (e.g. in the browser demo)
+        enricher = enrich.Enricher.from_env(cache_path=".enrich_cache.json")
+        if enricher.enabled:
+            report = enrich.enrich_report(report, enricher)
+        else:
+            print("No API key found: set VT_API_KEY and/or ABUSEIPDB_API_KEY. Continuing offline.", file=sys.stderr)
     print(json.dumps(report, indent=2, ensure_ascii=False) if args.json else render(report))
     if args.html:
-        with open(args.html, "w", encoding="utf-8") as f:
-            f.write(render_html(report))
+        _write(args.html, render_html(report))
+    if args.incident_report or args.iocs_csv or args.stix:
+        import reports
+        if args.incident_report:
+            _write(args.incident_report, reports.incident_report_md(report))
+        if args.iocs_csv:
+            _write(args.iocs_csv, reports.iocs_csv(report))
+        if args.stix:
+            bundle = reports.stix_bundle(report)
+            if bundle is None:
+                print("STIX: nothing to export (email looks benign or has no indicators).", file=sys.stderr)
+            else:
+                _write(args.stix, json.dumps(bundle, indent=2))
     return 0 if report["score"] < 40 else 2
 
 
