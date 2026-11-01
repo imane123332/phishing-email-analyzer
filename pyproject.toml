@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "phishing-email-analyzer"
+version = "0.2.0"
+description = "Static phishing analysis of .eml files: headers, URLs, attachments, risk score, ATT&CK tags, IOC export"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Imane Akouttif" }]
+keywords = ["phishing", "email-security", "blue-team", "soc", "dfir"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Security",
+]
+
+[project.scripts]
+phishing-analyzer = "analyzer:main"
+phishing-evaluate = "evaluate:main"
+phishing-webapp = "webapp:main"
+
+[tool.setuptools]
+py-modules = ["analyzer", "enrich", "reports", "evaluate", "webapp"]

@@ -5,4 +5,7 @@ report.html
 data/
 results.csv
 *results*.csv
-*results*.csv
+.enrich_cache.json
+out/
+build/
+*.egg-info/
