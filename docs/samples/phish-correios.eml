@@ -1,0 +1,9 @@
+Authentication-Results: mx.example.org; spf=none; dkim=none; dmarc=none
+From: "Correios" <alerta@correios123>
+To: student@example.org
+Subject: Sua encomenda esta bloqueada
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<p>Sua conta bloqueada. Regularize os tributos hoje.</p>
+<a href="http://203.0.113.77/pagar">Pagar agora</a>

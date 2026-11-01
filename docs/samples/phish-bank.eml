@@ -1,0 +1,23 @@
+Received: from mail.evil-host.ru ([185.220.101.5]) by mx.victim.ma with ESMTP; Mon, 26 Oct 2026 09:00:00 +0000
+Authentication-Results: mx.victim.ma; spf=fail smtp.mailfrom=evil-host.ru; dkim=none; dmarc=fail
+Return-Path: <bounce@evil-host.ru>
+From: "Attijariwafa Bank Support" <support@secure-login-update.xyz>
+Reply-To: <collect@gmail.com>
+To: imane@victim.ma
+Subject: Urgent: vérifiez votre compte
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="B"
+
+--B
+Content-Type: text/html; charset=utf-8
+
+<p>Votre compte suspendu. Agissez immédiatement.</p>
+<a href="http://185.220.101.5/login">www.attijariwafa.ma</a>
+<a href="http://bit.ly/3xYz">cliquez ici</a>
+--B
+Content-Type: application/octet-stream; name="facture.pdf.exe"
+Content-Disposition: attachment; filename="facture.pdf.exe"
+Content-Transfer-Encoding: base64
+
+TVqQAAMAAAAEAAAA
+--B--

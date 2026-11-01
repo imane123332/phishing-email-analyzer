@@ -1,0 +1,12 @@
+Received: from mail.sender-host.example ([203.0.113.25]) by mx.example.org with ESMTP; Mon, 26 Oct 2026 08:12:00 +0000
+Authentication-Results: mx.example.org; spf=fail smtp.mailfrom=sender-host.example; dkim=none; dmarc=fail
+Return-Path: <noreply@sender-host.example>
+From: "Microsoft 365 Security" <no-reply@account-verify.example>
+Reply-To: <helpdesk.office@mail-box.example>
+To: student@example.org
+Subject: Your password expires today - action required
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<p>Your password expires today. Verify your account immediately to avoid suspension.</p>
+<p><a href="http://203.0.113.25/m365/login">https://login.microsoftonline.com/verify</a></p>

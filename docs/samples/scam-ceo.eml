@@ -1,0 +1,11 @@
+Authentication-Results: mx.example.org; spf=pass smtp.mailfrom=gmail.com; dkim=pass header.d=gmail.com; dmarc=pass
+Return-Path: <karim.demo.ceo@gmail.com>
+From: "Karim (CEO)" <karim.demo.ceo@gmail.com>
+To: student@example.org
+Subject: Quick favor
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Are you at your desk? I am in a meeting and cannot call. I need you to buy
+5 gift cards of 100 euros for a client and send me the codes by reply. I will
+refund you today. Keep this between us.

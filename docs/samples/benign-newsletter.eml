@@ -1,0 +1,12 @@
+Authentication-Results: mx.example.org; spf=pass smtp.mailfrom=esp-mail.example; dkim=pass header.d=brand-shop.example; dmarc=pass header.from=brand-shop.example
+Return-Path: <bounce-8841@esp-mail.example>
+From: "Brand Shop" <news@brand-shop.example>
+To: student@example.org
+Subject: Autumn sale starts today
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+<div style="display:none">Up to 40% off this week</div>
+<h1>Autumn sale</h1>
+<p>See the new collection on <a href="https://brand-shop.example/sale">our website</a>.</p>
+<p><a href="http://click.esp-mail.example/t/abc123">View in browser</a></p>

@@ -1,0 +1,10 @@
+Authentication-Results: mx.example.org; spf=pass; dkim=pass header.d=code-host.example; dmarc=pass
+Return-Path: <noreply@code-host.example>
+From: "Code Host" <notifications@code-host.example>
+To: student@example.org
+Subject: [phishing-email-analyzer] New star on your repository
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Someone starred your repository. View it here:
+https://code-host.example/student/phishing-email-analyzer

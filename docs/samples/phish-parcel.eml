@@ -1,0 +1,11 @@
+Received: from relay.example ([198.51.100.40]) by mx.example.org with ESMTP; Mon, 26 Oct 2026 09:30:00 +0000
+Authentication-Results: mx.example.org; spf=softfail smtp.mailfrom=delivery-notice.example; dkim=none; dmarc=none
+From: "DHL Express" <track@delivery-notice.example>
+To: student@example.org
+Subject: Colis en attente - paiement urgent
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Bonjour, votre colis est bloque. Payez 1,99 EUR immediatement pour la livraison:
+http://bit.ly/parcel-fee-demo
+Dernier avertissement avant retour a l'expediteur.

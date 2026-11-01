@@ -1,0 +1,129 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Live demo - Phishing Email Analyzer</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0d1117;color:#e6edf3;font:16px/1.6 -apple-system,Segoe UI,Roboto,sans-serif}
+a{color:#58a6ff;text-decoration:none}a:hover{text-decoration:underline}.w{max-width:1100px;margin:0 auto;padding:0 24px}
+nav{border-bottom:1px solid #21262d;padding:14px 0}nav .w{display:flex;gap:20px;align-items:center;flex-wrap:wrap}nav b{margin-right:auto}
+h1{font-size:32px;margin:36px 0 6px}h2{font-size:22px;margin:44px 0 10px}.lead{color:#8b949e;max-width:760px}
+.grid{display:grid;grid-template-columns:320px 1fr;gap:18px;margin-top:20px}@media(max-width:900px){.grid{grid-template-columns:1fr}}
+.card{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:16px}
+h3{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:#8b949e;margin:14px 0 8px}h3:first-child{margin-top:0}
+.s{display:flex;gap:10px;align-items:flex-start;width:100%;text-align:left;background:none;border:1px solid transparent;color:inherit;font:inherit;font-size:14px;padding:7px 9px;border-radius:8px;cursor:pointer}
+.s:hover{background:#1b2330}.s.sel{background:#1b2330;border-color:#388bfd}.dot{width:10px;height:10px;border-radius:50%;margin-top:7px;flex:none}
+.p{background:#ff7b72}.b{background:#3fb950}.h{background:#e3b341}.s small{display:block;color:#8b949e;font-size:12px}
+#drop{border:2px dashed #30363d;border-radius:10px;padding:16px;text-align:center;color:#8b949e;cursor:pointer;font-size:14px}#drop.over{border-color:#58a6ff;background:#1b2330}
+textarea{width:100%;height:90px;background:#0d1117;color:#e6edf3;border:1px solid #30363d;border-radius:8px;padding:8px;font:12px SFMono-Regular,Consolas,monospace;resize:vertical}
+button.go{background:#238636;color:#fff;border:0;border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer;margin-top:6px}button.go:disabled{opacity:.5;cursor:wait}
+#status{padding:10px 14px;border-radius:8px;background:#161b22;border:1px solid #30363d;color:#8b949e;margin-bottom:12px;font-size:14px}#status.err{color:#ff7b72}
+iframe{width:100%;height:900px;border:0;border-radius:12px;background:#0d1117}.note{font-size:14px;color:#8b949e}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;margin:14px 0}.stat{background:#161b22;border:1px solid #30363d;border-radius:12px;padding:14px}
+.stat b{font-size:28px;display:block}.stat span{color:#8b949e;font-size:14px}
+input[type=range]{width:100%;accent-color:#58a6ff}.row{display:flex;justify-content:space-between;color:#8b949e;font-size:13px}
+svg{width:100%;height:auto;background:#161b22;border:1px solid #30363d;border-radius:12px}svg text{fill:#8b949e;font:11px sans-serif}
+.warn{border-left:3px solid #e3b341}code{font:13px SFMono-Regular,Consolas,monospace;color:#79c0ff}footer{border-top:1px solid #21262d;margin-top:48px;padding:22px 0;color:#6e7681;font-size:14px}
+</style></head><body>
+<nav><div class="w"><b>phishing-email-analyzer</b><a href="index.html">Overview</a><a href="#try">Try it</a><a href="#efficiency">How good is it?</a>
+<a href="https://github.com/imane123332/phishing-email-analyzer">GitHub</a></div></nav>
+<main class="w">
+<h1>Live demo</h1>
+<p class="lead">This page runs the real <a href="analyzer.py"><code>analyzer.py</code></a> inside your browser (Python compiled to WebAssembly). Nothing is uploaded: your emails never leave this page.</p>
+
+<h2 id="try">1. Try it</h2>
+<div class="grid">
+<div class="card">
+<h3>Phishing (synthetic)</h3><div id="g-phish"></div>
+<h3>Legitimate (synthetic)</h3><div id="g-ben"></div>
+<h3>A case it misses</h3><div id="g-hard"></div>
+<h3>Your own email</h3>
+<div id="drop">Drop an .eml file here or click<input id="file" type="file" accept=".eml,message/rfc822" hidden></div>
+<textarea id="paste" placeholder="...or paste the raw email source (headers + body)" aria-label="Paste raw email"></textarea>
+<button class="go" id="run">Analyze pasted text</button>
+</div>
+<div><div id="status" role="status">Loading Python in your browser (about 10 MB, first visit only)...</div>
+<div class="card" style="padding:0"><iframe id="view" title="Analysis report" sandbox></iframe></div></div>
+</div>
+<p class="note">The sample emails are fake and were written for this demo. They show how the rules work. They do not prove accuracy; the numbers below do.</p>
+
+<h2 id="efficiency">2. How good is it?</h2>
+<p class="lead">Move the slider to change the alert threshold. These numbers were measured on a <b>separate test set</b> that was not used to tune the rules: 1,500 real phishing emails (phishing_pot) and 150 legitimate emails from one Gmail inbox.</p>
+<div class="card"><div class="row"><span>More alerts (threshold 10)</span><span>Fewer alerts (threshold 60)</span></div>
+<input id="thr" type="range" min="0" max="7" value="2" aria-label="Alert threshold">
+<div class="stats"><div class="stat"><span>Alert when score is at least</span><b id="t">20</b></div>
+<div class="stat"><span>Real phishing caught</span><b id="rec" style="color:#3fb950"></b><span id="reccount"></span></div>
+<div class="stat"><span>Legitimate emails flagged</span><b id="fpr" style="color:#e3b341"></b><span id="fpcount"></span></div></div>
+<svg id="chart" viewBox="0 0 560 320" role="img" aria-label="Detection rate against false alarm rate for each threshold"></svg></div>
+<div class="card warn" style="margin-top:14px"><b>Be careful with these numbers.</b>
+<ul><li>Only 150 legitimate emails: 1 false alarm could mean a true rate between about 0.1% and 3.7%.</li>
+<li>The legitimate emails are promotions, updates and social mail from one inbox, not personal or work mail.</li>
+<li>About a third of phishing is missed. Try the "A case it misses" sample: a plain-text scam with no technical red flag.</li>
+<li>The default threshold (20) was chosen on the tuning set, before the test set was run once.</li></ul></div>
+</main>
+<footer><div class="w">Built by Imane &middot; <a href="index.html">Back to overview</a> &middot; <a href="https://github.com/imane123332/phishing-email-analyzer">Source on GitHub</a></div></footer>
+
+<script src="https://cdn.jsdelivr.net/pyodide/v314.0.3/full/pyodide.js"></script>
+<script>
+const SAMPLES=[
+ {f:'phish-bank.eml',t:'Fake bank alert',n:'Brand spoofing, IP link, attachment .pdf.exe',g:'g-phish',c:'p'},
+ {f:'phish-m365.eml',t:'Microsoft 365 password',n:'Link text hides the real address',g:'g-phish',c:'p'},
+ {f:'phish-parcel.eml',t:'Parcel fee (French)',n:'Shortened link, urgency',g:'g-phish',c:'p'},
+ {f:'phish-invoice.eml',t:'Unpaid invoice',n:'Double-extension attachment',g:'g-phish',c:'p'},
+ {f:'phish-correios.eml',t:'Correios (Portuguese)',n:'Sender domain has no TLD',g:'g-phish',c:'p'},
+ {f:'benign-newsletter.eml',t:'Store newsletter',n:'Different bounce domain, but DMARC passes',g:'g-ben',c:'b'},
+ {f:'benign-github.eml',t:'Code host notification',n:'Normal notification',g:'g-ben',c:'b'},
+ {f:'benign-university.eml',t:'Message from a teacher',n:'Plain text, authenticated',g:'g-ben',c:'b'},
+ {f:'scam-ceo.eml',t:'CEO gift-card scam',n:'No link, no attachment, passes SPF/DKIM',g:'g-hard',c:'h'}];
+const $=id=>document.getElementById(id),status=$('status'),view=$('view');
+let busy=false;
+function say(m,err){status.textContent=m;status.className=err?'err':''}
+const pyReady=(async()=>{
+  const py=await loadPyodide();
+  const code=await (await fetch('analyzer.py')).text();
+  py.FS.writeFile('/home/pyodide/analyzer.py',code);
+  py.runPython("import sys\nsys.path.insert(0,'/home/pyodide')\nimport analyzer, json");
+  return py})();
+pyReady.then(()=>{say('Ready. Pick a sample or add your own email.');pick(0)}).catch(e=>say('Could not load Python: '+e.message,true));
+async function analyze(bytes,name){
+  if(busy)return;busy=true;$('run').disabled=true;say('Analyzing '+name+' ...');
+  try{
+    const py=await pyReady;
+    py.FS.writeFile('/tmp/in.eml',bytes);py.globals.set('NAME',name);
+    const out=JSON.parse(py.runPython("r = analyzer.analyze('/tmp/in.eml')\nr['file'] = NAME\njson.dumps({'score': r['score'], 'verdict': r['verdict'], 'html': analyzer.render_html(r)})"));
+    view.srcdoc=out.html;say(name+': score '+out.score+'/100, '+out.verdict);
+  }catch(e){say('Could not analyze this input: '+e.message,true)}
+  busy=false;$('run').disabled=false}
+function mark(i){document.querySelectorAll('.s').forEach((b,j)=>b.classList.toggle('sel',j===i))}
+async function pick(i){mark(i);const s=SAMPLES[i];
+  const r=await fetch('samples/'+s.f);await analyze(new Uint8Array(await r.arrayBuffer()),s.f)}
+SAMPLES.forEach((s,i)=>{const b=document.createElement('button');b.className='s';
+  const d=document.createElement('span');d.className='dot '+s.c;
+  const w=document.createElement('span');w.append(s.t);const sm=document.createElement('small');sm.textContent=s.n;w.append(sm);
+  b.append(d,w);b.onclick=()=>pick(i);$(s.g).append(b)});
+$('run').onclick=()=>{const t=$('paste').value;if(!t.trim()){say('Paste the raw email source first.',true);return}
+  mark(-1);analyze(new TextEncoder().encode(t),'pasted-email.eml')};
+async function useFile(f){if(!f)return;if(f.size>10*1024*1024){say('File is larger than 10 MB.',true);return}
+  mark(-1);await analyze(new Uint8Array(await f.arrayBuffer()),f.name)}
+$('drop').onclick=()=>$('file').click();$('file').onchange=e=>useFile(e.target.files[0]);
+['dragenter','dragover'].forEach(n=>$('drop').addEventListener(n,e=>{e.preventDefault();$('drop').classList.add('over')}));
+['dragleave','drop'].forEach(n=>$('drop').addEventListener(n,e=>{e.preventDefault();$('drop').classList.remove('over')}));
+$('drop').addEventListener('drop',e=>useFile(e.dataTransfer.files[0]));
+
+/* Measured on the held-out test set: 1,500 phishing, 150 legitimate */
+const D=[{t:10,r:81.2,f:20.0},{t:15,r:75.3,f:0.7},{t:20,r:66.8,f:0.7},{t:25,r:59.5,f:0.0},
+         {t:30,r:48.7,f:0.0},{t:40,r:21.5,f:0.0},{t:50,r:8.5,f:0.0},{t:60,r:3.8,f:0.0}];
+const NS='http://www.w3.org/2000/svg',X=f=>50+f/25*480,Y=r=>280-r/100*250;
+function el(n,a,txt){const e=document.createElementNS(NS,n);for(const k in a)e.setAttribute(k,a[k]);if(txt!==undefined)e.textContent=txt;return e}
+function draw(i){const c=$('chart');c.replaceChildren();
+  [0,25,50,75,100].forEach(v=>{c.append(el('line',{x1:50,x2:530,y1:Y(v),y2:Y(v),stroke:'#21262d'}),el('text',{x:44,y:Y(v)+4,'text-anchor':'end'},v+'%'))});
+  [0,5,10,15,20,25].forEach(v=>c.append(el('text',{x:X(v),y:300,'text-anchor':'middle'},v+'%')));
+  c.append(el('text',{x:290,y:316,'text-anchor':'middle'},'Legitimate emails flagged (false alarms)'),
+           el('text',{x:12,y:160,transform:'rotate(-90 12 160)','text-anchor':'middle'},'Phishing caught'));
+  const pts=D.slice().reverse().map(d=>X(d.f)+','+Y(d.r)).join(' ');
+  c.append(el('polyline',{points:pts,fill:'none',stroke:'#388bfd','stroke-width':2}));
+  D.forEach((d,j)=>{const on=j===i;
+    c.append(el('circle',{cx:X(d.f),cy:Y(d.r),r:on?8:4,fill:on?'#3fb950':'#388bfd',stroke:'#0d1117','stroke-width':2}));
+    if(on||d.f>0)c.append(el('text',{x:X(d.f)+(d.f>10?-12:12),y:Y(d.r)-8,'text-anchor':d.f>10?'end':'start'},'t='+d.t))})}
+function upd(){const i=+$('thr').value,d=D[i];$('t').textContent=d.t;
+  $('rec').textContent=d.r.toFixed(1)+'%';$('reccount').textContent='about '+Math.round(d.r*15)+' of 1,500';
+  $('fpr').textContent=d.f.toFixed(1)+'%';$('fpcount').textContent=Math.round(d.f*1.5)+' of 150';draw(i)}
+$('thr').oninput=upd;upd();
+</script></body></html>

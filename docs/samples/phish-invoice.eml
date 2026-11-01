@@ -1,0 +1,20 @@
+Authentication-Results: mx.example.org; spf=none; dkim=none; dmarc=none
+Return-Path: <bounce@mailer-host.example>
+From: "Accounts Department" <billing@supplier-payments.example>
+Reply-To: <payments.desk@free-mail.example>
+To: student@example.org
+Subject: Unpaid invoice 2026-4471 - urgent
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="BND"
+
+--BND
+Content-Type: text/plain; charset=utf-8
+
+Please find the unpaid invoice attached. Act now to avoid penalties.
+--BND
+Content-Type: application/octet-stream; name="invoice_2026.pdf.exe"
+Content-Disposition: attachment; filename="invoice_2026.pdf.exe"
+Content-Transfer-Encoding: base64
+
+U2FtcGxlIGZha2UgYXR0YWNobWVudCBmb3IgdGVzdGluZyBvbmx5Lg==
+--BND--

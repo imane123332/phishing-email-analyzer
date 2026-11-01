@@ -1,0 +1,9 @@
+Authentication-Results: mx.example.org; spf=pass; dkim=pass header.d=university.example; dmarc=pass
+From: "Prof. Alami" <alami@university.example>
+To: student@example.org
+Subject: Cybersecurity lab - report deadline
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+Hello, the lab report is due next Friday. The instructions are on the course
+page: https://learn.university.example/cyber-lab
