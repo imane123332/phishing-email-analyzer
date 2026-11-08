@@ -261,7 +261,8 @@ def merge_findings(findings):
             merged[f.rule] = [f.points, [f.detail]]
         else:
             merged[f.rule][0] = max(merged[f.rule][0], f.points)
-            merged[f.rule][1].append(f.detail)
+            if f.detail not in merged[f.rule][1]:  # same host / URL repeated many times: show it once
+                merged[f.rule][1].append(f.detail)
     out = []
     for rule, (pts, details) in merged.items():
         shown = "; ".join(details[:3]) + (f" (+{len(details) - 3} more)" if len(details) > 3 else "")
