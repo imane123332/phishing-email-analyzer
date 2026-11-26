@@ -45,12 +45,6 @@ Score 0-100: >=40 MALICIOUS, >=20 SUSPICIOUS, else LIKELY BENIGN. Each rule coun
 python evaluate.py --phish data/test --ham data/ham_test --sweep
 ```
 
-**Limits:**
-- Only 150 legitimate emails per set. 1 false alarm in 150 means the true rate could be roughly 0.1% to 3.7%.
-- The legitimate emails are automated mail (promotions, updates, social) from one mailbox. No personal or work mail.
-- About one third of the phishing is missed: many are plain-text or image-only scams with no technical red flag. Next step: URL and IP reputation lookups.
-- Precision is not reported because the test set has 10x more phishing than legitimate mail, unlike a real inbox.
-- Static analysis only. Nothing is opened or executed.
 
 ## Roadmap
 - [ ] VirusTotal / AbuseIPDB enrichment (hash, IP, domain)
